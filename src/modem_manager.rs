@@ -1,131 +1,75 @@
 use anyhow::Result;
-use dbus::blocking::Connection;
-use dbus::channel::MatchingReceiver;
-use dbus::message::MatchRule;
-use dbus::Message;
 
-use log::{debug, info};
-use num_derive::FromPrimitive;
+use std::collections::HashMap;
+
+use log::{debug, info, warn};
+
 use num_traits::FromPrimitive;
+use zbus::Connection;
 
-use std::time::Duration;
+use zbus::export::zvariant;
+use zbus::export::zvariant::{OwnedObjectPath, OwnedValue};
 
-#[derive(FromPrimitive, Debug)]
-enum MMModemState {
-    Failed = -1,
-    Unknown = 0,
-    Initializing = 1,
-    Locked = 2,
-    Disabled = 3,
-    Disabling = 4,
-    Enabling = 5,
-    Enabled = 6,
-    Searching = 7,
-    Registered = 8,
-    Disconnecting = 9,
-    Connecting = 10,
-    Connected = 11,
+use crate::dbus_proxies::MMModemState;
+
+static MODEM_PATH: &str = "/org/freedesktop/ModemManager1/Modem/0";
+
+pub async fn check_modem_state(connection: &Connection) -> Result<Option<MMModemState>> {
+    let proxy = crate::dbus_proxies::SimpleProxy::new_for_path(&connection, MODEM_PATH)?;
+    debug!("Fetching modem status");
+    let status: HashMap<String, zvariant::OwnedValue> = proxy.get_status()?;
+    let modem_state = modem_properties_to_status(&status);
+    debug!("Modem state is: {:?}", modem_state);
+    return Ok(modem_state);
 }
 
-#[derive(FromPrimitive, Debug)]
-enum MMModemStateChangeReason {
-    Unknown = 0,
-    UserRequested = 1,
-    Suspend = 2,
-    Failure = 3,
-}
-
-pub async fn check_modem_status_and_reconnect() -> Result<()> {
-    info!("Ping");
+pub async fn check_modem_state_and_maybe_reconnect(connection: &Connection) -> Result<()> {
+    let modem_state = check_modem_state(connection).await?;
+    match modem_state {
+        Some(MMModemState::Registered) => {
+            info!("Modem registered. Let's try and reconnect");
+            simple_connect(&connection).await?;
+        }
+        Some(other) => {
+            debug!("Modem is in state {:?}. Let's not bother it", other)
+        }
+        _ => {
+            warn!("Modem doesn't appear to be giving us a state. Erk.");
+        }
+    }
     Ok(())
 }
 
-fn handle_message(msg: &Message) {
-    debug!("Received DBus message: {:?}", msg);
-    // msg.path().expect("No path in dbus message");
-    // msg.member().map(|m| {
-    //     if m.into_cstring()
-    //         .into_string()
-    //         .expect("Member is not a valid string")
-    //         .eq("StateChanged")
-    //     {
-    //         let (from_raw, to_raw, reason_raw) = msg.get3::<i32, i32, u32>();
-    //         let from: Option<MMModemState> = from_raw.and_then(|x| FromPrimitive::from_i32(x));
-    //         let to: Option<MMModemState> = to_raw.and_then(|x| FromPrimitive::from_i32(x));
-    //         let reason: Option<MMModemStateChangeReason> =
-    //             reason_raw.and_then(|x| FromPrimitive::from_u32(x));
-    //
-    //         match (from, to) {
-    //             (Some(MMModemState::Disconnecting), Some(MMModemState::Registered)) => {
-    //                 info!("Modem has disconnected back into registering state");
-    //                 request_reconnect()
-    //             }
-    //             (f, t) => {
-    //                 info!(
-    //                     "State changed from {:?} to {:?} because of {:?}",
-    //                     f, t, reason
-    //                 );
-    //             }
-    //         }
-    //     }
-    // });
+fn modem_properties_to_status(status: &HashMap<String, OwnedValue>) -> Option<MMModemState> {
+    status
+        .get("state")
+        .and_then(|a| a.downcast_ref::<u32>())
+        .and_then(|val| MMModemState::from_u32(*val))
 }
 
-fn request_reconnect() {
-    info!("Requesting reconnect of modem")
-    // let result = proxy.method_call(
-    //     "org.freedesktop.ModemManager1.Modem.Simple",
-    //     "Connect",
-    //     ("apn=giffgaff",),
-    // );
-    // result.expect("Error sending connect message")
-}
+async fn simple_connect(connection: &Connection) -> Result<()> {
+    let proxy = crate::dbus_proxies::SimpleProxy::new_for_path(connection, MODEM_PATH)?;
+    let connect_parameters = HashMap::from([
+        ("apn", "giffgaff.com"),
+        ("user", "gg"),
+        ("password", "p"),
+        ("allowed-auth", "pap"),
+    ]);
 
-pub async fn dbus_message_handler_loop() -> Result<()> {
-    info!("FNARR");
-    let connection = Connection::new_system().expect("Failed to connect to D-Bus");
-    debug!("Connected to DBus");
-
-    let rule = MatchRule::new();
-
-    let proxy = connection.with_proxy(
-        "org.freedesktop.DBus",
-        "/org/freedesktop/ModemManager1/Modem",
-        Duration::from_millis(1000),
-    );
     debug!(
-        "DBus proxy created destination={:} path={:}",
-        proxy.destination, proxy.path
+        "Connecting to modem with parameters {:?}",
+        connect_parameters
+    );
+    let bearer_path: OwnedObjectPath = proxy.connect(
+        connect_parameters
+            .iter()
+            .map(|k| (*k.0, zvariant::Value::from(k.1)))
+            .collect(),
+    )?;
+    info!(
+        "Successfully connected modem. Bearer is {}",
+        bearer_path.as_str()
     );
 
-    proxy
-        .method_call(
-            "org.freedesktop.DBus.Monitoring",
-            "BecomeMonitor",
-            (vec![rule.match_str()], 0u32),
-        )
-        .and_then(|_: ()| {
-            debug!("Starting receive");
-            Ok(connection.start_receive(
-                rule.static_clone(),
-                Box::new(|msg, _| {
-                    handle_message(&msg);
-                    true
-                }),
-            ))
-        })
-        .or_else::<dbus::Error, _>(|_| {
-            debug!("Adding match");
-            connection.add_match(rule, |_: (), _, msg| {
-                handle_message(&msg);
-                true
-            })
-        })
-        .expect("Unable to subscribe to DBus");
-
-    loop {
-        connection
-            .process(Duration::from_secs(1))
-            .expect("DBus connection processing timed out");
-    }
+    Ok(())
 }

@@ -1,3 +1,0 @@
-# Need this to build on target with correct dbus depos and glibc version
-[target.x86_64-unknown-linux-gnu]
-image = "parp:latest"
