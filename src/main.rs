@@ -5,12 +5,15 @@ use clap::Parser;
 
 use std::time::Duration;
 
-use crate::modem_manager::{check_modem_state, check_modem_state_and_maybe_reconnect};
-
-use log::{error, info, LevelFilter};
+use crate::dbus_proxies::{MMModemState, MMModemStateChangeReason};
+use crate::modem_manager::{check_modem_state, check_modem_state_and_maybe_reconnect, MODEM_PATH};
+use log::{debug, error, info, LevelFilter};
+use num_traits::FromPrimitive;
 use simplelog::{ColorChoice, Config, TerminalMode};
-
+use tokio::task::JoinHandle;
 use tokio::try_join;
+
+use zbus::MessageError;
 
 #[derive(Parser, Debug)]
 #[clap(about, version, author)]
@@ -46,41 +49,67 @@ async fn main() -> anyhow::Result<()> {
     let periodic_modem_status_checker_loop =
         get_modem_status_checker_loop_task(periodic_check_interval);
 
-    match try_join!(periodic_modem_status_checker_loop) {
+    let dbus_signal_listener_task = get_dbus_signal_listener_and_doer_thing();
+
+    match try_join!(
+        periodic_modem_status_checker_loop,
+        dbus_signal_listener_task
+    ) {
         Err(e) => error!("Boo: {}", e),
         _ => {}
     }
     Ok(())
 }
 
-fn get_modem_status_checker_loop_task(interval: Duration) -> tokio::task::JoinHandle<()> {
+fn get_dbus_signal_listener_and_doer_thing() -> JoinHandle<anyhow::Result<()>> {
+    tokio::task::spawn(async {
+        let connection = zbus::Connection::new_system()?;
+        let proxy = crate::dbus_proxies::ModemProxy::new_for_path(&connection, MODEM_PATH)?;
+        proxy.connect_state_changed(move |old, new, reason| {
+            match (
+                MMModemState::from_i32(old),
+                MMModemState::from_i32(new),
+                MMModemStateChangeReason::from_u32(reason),
+            ) {
+                (Some(o), Some(n), Some(r)) => {
+                    info!("State changed {:?} to {:?} because {:?}", o, n, r);
+                    Ok(())
+                }
+                _ => Err(zbus::Error::from(MessageError::InvalidField)),
+            }
+        })?;
+        debug!("Listening for DBus state_change signals");
+        loop {
+            let result = proxy.next_signal();
+            if result.is_err() {
+                break;
+            }
+        }
+        Ok(())
+    })
+}
+
+fn get_modem_status_checker_loop_task(interval: Duration) -> JoinHandle<anyhow::Result<()>> {
     tokio::task::spawn(async move {
         let mut task_interval = tokio::time::interval(interval);
         info!("Checking modem status every {}s", interval.as_secs());
 
-        let connection = zbus::Connection::new_system();
-        if connection.is_ok() {
-            // Capability test. Don't start the loop if we can't fetch status
-            let state = check_modem_state(connection.as_ref().unwrap()).await;
+        let connection = zbus::Connection::new_system()?;
 
-            if state.is_ok() {
-                loop {
-                    task_interval.tick().await;
-                    let result =
-                        check_modem_state_and_maybe_reconnect(connection.as_ref().unwrap()).await;
-                    match result {
-                        Err(e) => {
-                            error!("Failed to poll and reconnect modem: {}", e);
-                            break;
-                        }
-                        _ => {}
-                    }
+        // Capability test. Don't start the loop if we can't fetch status
+        check_modem_state(&connection).await?;
+
+        loop {
+            task_interval.tick().await;
+            let result = check_modem_state_and_maybe_reconnect(&connection).await;
+            match result {
+                Err(e) => {
+                    error!("Failed to poll and reconnect modem: {}", e);
+                    break;
                 }
-            } else {
-                error!("Failed to call DBus method: {}", state.err().unwrap())
+                _ => {}
             }
-        } else {
-            error!("Failed to connect to DBus: {}", connection.err().unwrap())
         }
+        Ok(())
     })
 }

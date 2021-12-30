@@ -21,6 +21,13 @@ pub trait Simple {
     fn get_status(&self) -> zbus::Result<std::collections::HashMap<String, zvariant::OwnedValue>>;
 }
 
+#[dbus_proxy(interface = "org.freedesktop.ModemManager1.Modem")]
+pub trait Modem {
+    /// StateChanged signal
+    #[dbus_proxy(signal)]
+    fn state_changed(&self, old: i32, new: i32, reason: u32) -> zbus::Result<()>;
+}
+
 #[derive(FromPrimitive, Debug)]
 pub enum MMModemState {
     Failed = -1,

@@ -12,7 +12,7 @@ use zbus::export::zvariant::{OwnedObjectPath, OwnedValue};
 
 use crate::dbus_proxies::MMModemState;
 
-static MODEM_PATH: &str = "/org/freedesktop/ModemManager1/Modem/0";
+pub static MODEM_PATH: &str = "/org/freedesktop/ModemManager1/Modem/0";
 
 pub async fn check_modem_state(connection: &Connection) -> Result<Option<MMModemState>> {
     let proxy = crate::dbus_proxies::SimpleProxy::new_for_path(&connection, MODEM_PATH)?;
