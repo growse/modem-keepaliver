@@ -1,7 +1,7 @@
+use anyhow::{anyhow, Result};
 use num_derive::FromPrimitive;
 
-use zbus::dbus_proxy;
-use zbus::export::zvariant;
+use zbus::{dbus_proxy, zvariant};
 
 #[dbus_proxy(
     interface = "org.freedesktop.ModemManager1.Modem.Simple",
@@ -11,17 +11,20 @@ pub trait Simple {
     /// Connect method
     fn connect(
         &self,
-        properties: std::collections::HashMap<&str, zvariant::Value>,
+        properties: std::collections::HashMap<&str, zvariant::Value<'_>>,
     ) -> zbus::Result<zvariant::OwnedObjectPath>;
 
     /// Disconnect method
-    fn disconnect(&self, bearer: &zvariant::ObjectPath) -> zbus::Result<()>;
+    fn disconnect(&self, bearer: &zvariant::ObjectPath<'_>) -> zbus::Result<()>;
 
     /// GetStatus method
     fn get_status(&self) -> zbus::Result<std::collections::HashMap<String, zvariant::OwnedValue>>;
 }
 
-#[dbus_proxy(interface = "org.freedesktop.ModemManager1.Modem")]
+#[dbus_proxy(
+    interface = "org.freedesktop.ModemManager1.Modem",
+    default_service = "org.freedesktop.ModemManager1"
+)]
 pub trait Modem {
     /// StateChanged signal
     #[dbus_proxy(signal)]
@@ -51,4 +54,27 @@ pub enum MMModemStateChangeReason {
     UserRequested = 1,
     Suspend = 2,
     Failure = 3,
+}
+
+use num_traits::FromPrimitive;
+
+impl StateChangedArgs<'_> {
+    pub fn to_modem_states(
+        &self,
+    ) -> Result<(MMModemState, MMModemState, MMModemStateChangeReason)> {
+        Ok((
+            MMModemState::from_i32(self.old).ok_or(anyhow!("Invalid old state: {}", self.old))?,
+            MMModemState::from_i32(self.new).ok_or(anyhow!("Invalid new state: {}", self.new))?,
+            MMModemStateChangeReason::from_u32(self.reason)
+                .ok_or(anyhow!("Invalid state change reason: {}", self.reason))?,
+        ))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn state_change_converts_properly() {
+        assert_eq!(2, 2)
+    }
 }

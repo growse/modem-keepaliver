@@ -1,19 +1,19 @@
 mod dbus_proxies;
 mod modem_manager;
 
+use anyhow::Result;
 use clap::Parser;
-
 use std::time::Duration;
+use zbus::export::ordered_stream::OrderedStreamExt;
 
-use crate::dbus_proxies::{MMModemState, MMModemStateChangeReason};
-use crate::modem_manager::{check_modem_state, check_modem_state_and_maybe_reconnect, MODEM_PATH};
-use log::{debug, error, info, LevelFilter};
-use num_traits::FromPrimitive;
+use crate::dbus_proxies::{MMModemState, StateChangedStream};
+use crate::modem_manager::{check_modem_state_and_maybe_reconnect, get_state_change_stream};
+use log::{debug, error, info, warn, LevelFilter};
+
 use simplelog::{ColorChoice, Config, TerminalMode};
-use tokio::task::JoinHandle;
-use tokio::try_join;
 
-use zbus::MessageError;
+use tokio::try_join;
+use zbus::Connection;
 
 #[derive(Parser, Debug)]
 #[clap(about, version, author)]
@@ -32,7 +32,7 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     let args = Args::parse();
     simplelog::TermLogger::init(
         if args.debug {
@@ -44,72 +44,60 @@ async fn main() -> anyhow::Result<()> {
         TerminalMode::Mixed,
         ColorChoice::Always,
     )?;
+    debug!("Debug logging enabled");
 
     let periodic_check_interval = Duration::from_secs(args.check_interval);
-    let periodic_modem_status_checker_loop =
-        get_modem_status_checker_loop_task(periodic_check_interval);
-
-    let dbus_signal_listener_task = get_dbus_signal_listener_and_doer_thing();
 
     match try_join!(
-        periodic_modem_status_checker_loop,
-        dbus_signal_listener_task
+        get_modem_status_checker_loop(periodic_check_interval),
+        get_dbus_signal_listener()
     ) {
         Err(e) => error!("Boo: {}", e),
-        _ => {}
+        anything => {
+            info!("I stopped for a non-error reason? {:?}", anything)
+        }
     }
     Ok(())
 }
 
-fn get_dbus_signal_listener_and_doer_thing() -> JoinHandle<anyhow::Result<()>> {
-    tokio::task::spawn(async {
-        let connection = zbus::Connection::new_system()?;
-        let proxy = crate::dbus_proxies::ModemProxy::new_for_path(&connection, MODEM_PATH)?;
-        proxy.connect_state_changed(move |old, new, reason| {
-            match (
-                MMModemState::from_i32(old),
-                MMModemState::from_i32(new),
-                MMModemStateChangeReason::from_u32(reason),
-            ) {
-                (Some(o), Some(n), Some(r)) => {
-                    info!("State changed {:?} to {:?} because {:?}", o, n, r);
-                    Ok(())
-                }
-                _ => Err(zbus::Error::from(MessageError::InvalidField)),
-            }
-        })?;
-        debug!("Listening for DBus state_change signals");
-        loop {
-            let result = proxy.next_signal();
-            if result.is_err() {
-                break;
-            }
+async fn get_dbus_signal_listener() -> Result<()> {
+    let mut stream: StateChangedStream = get_state_change_stream().await?;
+
+    info!("Listening for DBus Modem state_change signals");
+
+    while let Some(signal) = stream.next().await {
+        let state_change_event = signal
+            .args()
+            .map_err(anyhow::Error::from)
+            .and_then(|a: dbus_proxies::StateChangedArgs| a.to_modem_states())?;
+        debug!(
+            "Modem state change detected. From {:?} to {:?} because of {:?}",
+            state_change_event.0, state_change_event.1, state_change_event.2
+        );
+        match state_change_event {
+            (_, MMModemState::Registered, _) => info!("Ready to connect!"),
+            (_, MMModemState::Connected, _) => info!("Connected!"),
+            um => warn!("{:?}", um),
         }
-        Ok(())
-    })
+    }
+    Ok(())
 }
 
-fn get_modem_status_checker_loop_task(interval: Duration) -> JoinHandle<anyhow::Result<()>> {
-    tokio::task::spawn(async move {
-        let mut task_interval = tokio::time::interval(interval);
-        info!("Checking modem status every {}s", interval.as_secs());
+async fn get_modem_status_checker_loop(interval: Duration) -> Result<()> {
+    let mut task_interval = tokio::time::interval(interval);
+    info!("Checking modem status every {}s", interval.as_secs());
 
-        let connection = zbus::Connection::new_system()?;
+    let connection = Connection::system().await?;
 
-        // Capability test. Don't start the loop if we can't fetch status
-        check_modem_state(&connection).await?;
-
-        loop {
-            task_interval.tick().await;
-            let result = check_modem_state_and_maybe_reconnect(&connection).await;
-            match result {
-                Err(e) => {
-                    error!("Failed to poll and reconnect modem: {}", e);
-                    break;
-                }
-                _ => {}
+    let err = loop {
+        task_interval.tick().await;
+        let result = check_modem_state_and_maybe_reconnect(&connection).await;
+        match result {
+            Err(e) => {
+                break e;
             }
+            _ => {}
         }
-        Ok(())
-    })
+    };
+    Err::<(), anyhow::Error>(err)
 }

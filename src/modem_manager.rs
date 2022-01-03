@@ -5,29 +5,19 @@ use std::collections::HashMap;
 use log::{debug, info, warn};
 
 use num_traits::FromPrimitive;
-use zbus::Connection;
+use zbus::{zvariant, Connection};
 
-use zbus::export::zvariant;
-use zbus::export::zvariant::{OwnedObjectPath, OwnedValue};
+use zbus::zvariant::{OwnedObjectPath, OwnedValue};
 
-use crate::dbus_proxies::MMModemState;
+use crate::dbus_proxies::{MMModemState, ModemProxy, SimpleProxy, StateChangedStream};
 
 pub static MODEM_PATH: &str = "/org/freedesktop/ModemManager1/Modem/0";
-
-pub async fn check_modem_state(connection: &Connection) -> Result<Option<MMModemState>> {
-    let proxy = crate::dbus_proxies::SimpleProxy::new_for_path(&connection, MODEM_PATH)?;
-    debug!("Fetching modem status");
-    let status: HashMap<String, zvariant::OwnedValue> = proxy.get_status()?;
-    let modem_state = modem_properties_to_status(&status);
-    debug!("Modem state is: {:?}", modem_state);
-    return Ok(modem_state);
-}
 
 pub async fn check_modem_state_and_maybe_reconnect(connection: &Connection) -> Result<()> {
     let modem_state = check_modem_state(connection).await?;
     match modem_state {
         Some(MMModemState::Registered) => {
-            info!("Modem registered. Let's try and reconnect");
+            info!("Modem in state Registered. Let's try and reconnect");
             simple_connect(&connection).await?;
         }
         Some(other) => {
@@ -40,6 +30,18 @@ pub async fn check_modem_state_and_maybe_reconnect(connection: &Connection) -> R
     Ok(())
 }
 
+async fn check_modem_state(connection: &Connection) -> Result<Option<MMModemState>> {
+    let proxy = SimpleProxy::builder(&connection)
+        .path(MODEM_PATH)?
+        .build()
+        .await?;
+    debug!("Fetching modem status");
+    let status = proxy.get_status().await?;
+    let modem_state = modem_properties_to_status(&status);
+    debug!("Modem state is: {:?}", modem_state);
+    return Ok(modem_state);
+}
+
 fn modem_properties_to_status(status: &HashMap<String, OwnedValue>) -> Option<MMModemState> {
     status
         .get("state")
@@ -48,7 +50,10 @@ fn modem_properties_to_status(status: &HashMap<String, OwnedValue>) -> Option<MM
 }
 
 async fn simple_connect(connection: &Connection) -> Result<()> {
-    let proxy = crate::dbus_proxies::SimpleProxy::new_for_path(connection, MODEM_PATH)?;
+    let proxy = SimpleProxy::builder(connection)
+        .path(MODEM_PATH)?
+        .build()
+        .await?;
     let connect_parameters = HashMap::from([
         ("apn", "giffgaff.com"),
         ("user", "gg"),
@@ -60,16 +65,27 @@ async fn simple_connect(connection: &Connection) -> Result<()> {
         "Connecting to modem with parameters {:?}",
         connect_parameters
     );
-    let bearer_path: OwnedObjectPath = proxy.connect(
-        connect_parameters
-            .iter()
-            .map(|k| (*k.0, zvariant::Value::from(k.1)))
-            .collect(),
-    )?;
+    let bearer_path: OwnedObjectPath = proxy
+        .connect(
+            connect_parameters
+                .iter()
+                .map(|k| (*k.0, zvariant::Value::from(k.1)))
+                .collect(),
+        )
+        .await?;
     info!(
         "Successfully connected modem. Bearer is {}",
         bearer_path.as_str()
     );
 
     Ok(())
+}
+
+pub async fn get_state_change_stream<'a>() -> Result<StateChangedStream<'a>> {
+    let connection = Connection::system().await?;
+    let proxy = ModemProxy::builder(&connection)
+        .path(MODEM_PATH)?
+        .build()
+        .await?;
+    Ok(proxy.receive_state_changed().await?)
 }
