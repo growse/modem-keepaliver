@@ -3,12 +3,15 @@ mod modem_manager;
 
 use anyhow::Result;
 use clap::Parser;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use zbus::export::ordered_stream::OrderedStreamExt;
 
 use crate::dbus_proxies::{MMModemState, StateChangedStream};
-use crate::modem_manager::{check_modem_state_and_maybe_reconnect, get_state_change_stream};
-use log::{debug, error, info, warn, LevelFilter};
+use crate::modem_manager::{
+    check_modem_state_and_maybe_reconnect, get_state_change_stream, simple_connect,
+};
+use log::{debug, error, info, LevelFilter};
 
 use simplelog::{ColorChoice, Config, TerminalMode};
 
@@ -48,9 +51,11 @@ async fn main() -> Result<()> {
 
     let periodic_check_interval = Duration::from_secs(args.check_interval);
 
+    let bottleneck = Arc::new(Mutex::new(true));
+
     match try_join!(
-        get_modem_status_checker_loop(periodic_check_interval),
-        get_dbus_signal_listener()
+        get_modem_status_checker_loop(periodic_check_interval, bottleneck.clone()),
+        get_dbus_signal_listener(bottleneck.clone())
     ) {
         Err(e) => error!("Boo: {}", e),
         anything => {
@@ -60,8 +65,9 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn get_dbus_signal_listener() -> Result<()> {
-    let mut stream: StateChangedStream = get_state_change_stream().await?;
+async fn get_dbus_signal_listener(bottleneck: Arc<Mutex<bool>>) -> Result<()> {
+    let connection = Connection::system().await?;
+    let mut stream: StateChangedStream = get_state_change_stream(&connection).await?;
 
     info!("Listening for DBus Modem state_change signals");
 
@@ -75,15 +81,21 @@ async fn get_dbus_signal_listener() -> Result<()> {
             state_change_event.0, state_change_event.1, state_change_event.2
         );
         match state_change_event {
-            (_, MMModemState::Registered, _) => info!("Ready to connect!"),
+            (_, MMModemState::Registered, _) => {
+                info!("Ready to connect!");
+                simple_connect(&connection, bottleneck.clone()).await?;
+            }
             (_, MMModemState::Connected, _) => info!("Connected!"),
-            um => warn!("{:?}", um),
+            state_change => debug!("Uninteresting state change: {:?}", state_change),
         }
     }
     Ok(())
 }
 
-async fn get_modem_status_checker_loop(interval: Duration) -> Result<()> {
+async fn get_modem_status_checker_loop(
+    interval: Duration,
+    bottleneck: Arc<Mutex<bool>>,
+) -> Result<()> {
     let mut task_interval = tokio::time::interval(interval);
     info!("Checking modem status every {}s", interval.as_secs());
 
@@ -91,7 +103,7 @@ async fn get_modem_status_checker_loop(interval: Duration) -> Result<()> {
 
     let err = loop {
         task_interval.tick().await;
-        let result = check_modem_state_and_maybe_reconnect(&connection).await;
+        let result = check_modem_state_and_maybe_reconnect(&connection, bottleneck.clone()).await;
         match result {
             Err(e) => {
                 break e;

@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use log::{debug, info, warn};
 
@@ -11,14 +12,17 @@ use zbus::zvariant::{OwnedObjectPath, OwnedValue};
 
 use crate::dbus_proxies::{MMModemState, ModemProxy, SimpleProxy, StateChangedStream};
 
-pub static MODEM_PATH: &str = "/org/freedesktop/ModemManager1/Modem/0";
+static MODEM_PATH: &str = "/org/freedesktop/ModemManager1/Modem/0";
 
-pub async fn check_modem_state_and_maybe_reconnect(connection: &Connection) -> Result<()> {
+pub(crate) async fn check_modem_state_and_maybe_reconnect(
+    connection: &Connection,
+    arc: Arc<Mutex<bool>>,
+) -> Result<()> {
     let modem_state = check_modem_state(connection).await?;
     match modem_state {
         Some(MMModemState::Registered) => {
             info!("Modem in state Registered. Let's try and reconnect");
-            simple_connect(&connection).await?;
+            simple_connect(&connection, arc).await?;
         }
         Some(other) => {
             debug!("Modem is in state {:?}. Let's not bother it", other)
@@ -49,41 +53,50 @@ fn modem_properties_to_status(status: &HashMap<String, OwnedValue>) -> Option<MM
         .and_then(|val| MMModemState::from_u32(*val))
 }
 
-async fn simple_connect(connection: &Connection) -> Result<()> {
-    let proxy = SimpleProxy::builder(connection)
-        .path(MODEM_PATH)?
-        .build()
-        .await?;
-    let connect_parameters = HashMap::from([
-        ("apn", "giffgaff.com"),
-        ("user", "gg"),
-        ("password", "p"),
-        ("allowed-auth", "pap"),
-    ]);
+pub(crate) async fn simple_connect(
+    connection: &Connection,
+    bottleneck: Arc<Mutex<bool>>,
+) -> Result<()> {
+    let guard = bottleneck.try_lock();
+    if guard.is_ok() {
+        info!("Took connection guard");
+        let proxy = SimpleProxy::builder(connection)
+            .path(MODEM_PATH)?
+            .build()
+            .await?;
+        let connect_parameters = HashMap::from([
+            ("apn", "giffgaff.com"),
+            ("user", "gg"),
+            ("password", "p"),
+            ("allowed-auth", "pap"),
+        ]);
 
-    debug!(
-        "Connecting to modem with parameters {:?}",
-        connect_parameters
-    );
-    let bearer_path: OwnedObjectPath = proxy
-        .connect(
+        debug!(
+            "Connecting to modem with parameters {:?}",
             connect_parameters
-                .iter()
-                .map(|k| (*k.0, zvariant::Value::from(k.1)))
-                .collect(),
-        )
-        .await?;
-    info!(
-        "Successfully connected modem. Bearer is {}",
-        bearer_path.as_str()
-    );
-
+        );
+        let bearer_path: OwnedObjectPath = proxy
+            .connect(
+                connect_parameters
+                    .iter()
+                    .map(|k| (*k.0, zvariant::Value::from(k.1)))
+                    .collect(),
+            )
+            .await?;
+        info!(
+            "Successfully connected modem. Bearer is {}",
+            bearer_path.as_str()
+        );
+    } else {
+        warn!("Unable to take guard: {:?}", guard.err().unwrap());
+    }
     Ok(())
 }
 
-pub async fn get_state_change_stream<'a>() -> Result<StateChangedStream<'a>> {
-    let connection = Connection::system().await?;
-    let proxy = ModemProxy::builder(&connection)
+pub(crate) async fn get_state_change_stream<'a>(
+    connection: &Connection,
+) -> Result<StateChangedStream<'a>> {
+    let proxy = ModemProxy::builder(connection)
         .path(MODEM_PATH)?
         .build()
         .await?;

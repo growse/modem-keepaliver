@@ -1,13 +1,13 @@
 use anyhow::{anyhow, Result};
 use num_derive::FromPrimitive;
 
+use num_traits::FromPrimitive;
 use zbus::{dbus_proxy, zvariant};
-
 #[dbus_proxy(
     interface = "org.freedesktop.ModemManager1.Modem.Simple",
     default_service = "org.freedesktop.ModemManager1"
 )]
-pub trait Simple {
+pub(crate) trait Simple {
     /// Connect method
     fn connect(
         &self,
@@ -25,14 +25,14 @@ pub trait Simple {
     interface = "org.freedesktop.ModemManager1.Modem",
     default_service = "org.freedesktop.ModemManager1"
 )]
-pub trait Modem {
+pub(crate) trait Modem {
     /// StateChanged signal
     #[dbus_proxy(signal)]
     fn state_changed(&self, old: i32, new: i32, reason: u32) -> zbus::Result<()>;
 }
 
 #[derive(FromPrimitive, Debug)]
-pub enum MMModemState {
+pub(crate) enum MMModemState {
     Failed = -1,
     Unknown = 0,
     Initializing = 1,
@@ -49,17 +49,15 @@ pub enum MMModemState {
 }
 
 #[derive(FromPrimitive, Debug)]
-pub enum MMModemStateChangeReason {
+pub(crate) enum MMModemStateChangeReason {
     Unknown = 0,
     UserRequested = 1,
     Suspend = 2,
     Failure = 3,
 }
 
-use num_traits::FromPrimitive;
-
 impl StateChangedArgs<'_> {
-    pub fn to_modem_states(
+    pub(crate) fn to_modem_states(
         &self,
     ) -> Result<(MMModemState, MMModemState, MMModemStateChangeReason)> {
         Ok((
