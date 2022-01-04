@@ -1,0 +1,16 @@
+version: 2
+updates:
+- package-ecosystem: bundler
+  directory: "/packaging"
+  schedule:
+    interval: daily
+  open-pull-requests-limit: 10
+  assignees:
+  - growse
+- package-ecosystem: cargo
+  directory: "/"
+  schedule:
+    interval: daily
+  open-pull-requests-limit: 10
+  assignees:
+  - growse

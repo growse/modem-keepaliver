@@ -1,0 +1,14 @@
+[Unit]
+Description=Daemon to keep a ModemManager modem connected
+StartLimitBurst=3
+StartLimitIntervalSec=30s
+
+[Service]
+Type=simple
+User=modem-keepaliver
+EnvironmentFile=/etc/default/modem-keepaliver
+ExecStart=/usr/bin/modem-keepaliver $MODEM_KEEPALIVER_ARGS
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

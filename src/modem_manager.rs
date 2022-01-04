@@ -59,7 +59,7 @@ pub(crate) async fn simple_connect(
 ) -> Result<()> {
     let guard = bottleneck.try_lock();
     if guard.is_ok() {
-        info!("Took connection guard");
+        debug!("Took connection guard");
         let proxy = SimpleProxy::builder(connection)
             .path(MODEM_PATH)?
             .build()

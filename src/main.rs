@@ -53,16 +53,15 @@ async fn main() -> Result<()> {
 
     let bottleneck = Arc::new(Mutex::new(true));
 
-    match try_join!(
+    try_join!(
         get_modem_status_checker_loop(periodic_check_interval, bottleneck.clone()),
         get_dbus_signal_listener(bottleneck.clone())
-    ) {
-        Err(e) => error!("Boo: {}", e),
-        anything => {
-            info!("I stopped for a non-error reason? {:?}", anything)
-        }
-    }
-    Ok(())
+    )
+    .map(|_| {})
+    .map_err(|e| {
+        error!("Fatal error: {}", e);
+        e
+    })
 }
 
 async fn get_dbus_signal_listener(bottleneck: Arc<Mutex<bool>>) -> Result<()> {

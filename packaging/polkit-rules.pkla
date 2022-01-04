@@ -1,0 +1,4 @@
+[Allow modem-keepaliver to control modem]
+Identity=unix-user:modem-keepaliver
+Action=org.freedesktop.ModemManager1.Device.Control
+ResultAny=yes

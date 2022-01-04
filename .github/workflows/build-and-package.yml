@@ -1,0 +1,93 @@
+name: Build, package and upload
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-musl
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v1
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: target
+          path: target/**/modem-keepaliver
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    needs: build
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+      - name: Set up Ruby 3.0
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.0
+          bundler-cache: true
+          working-directory: ./packaging
+      - name: Download build artifact
+        uses: actions/download-artifact@v2
+      - name: Set binary as executable
+        run: |
+          find target -name modem-keepaliver -exec chmod +x {} \;
+      - name: Package
+        working-directory: ./packaging
+        run: |
+          export DEB_VERSION="$(cat ../Cargo.toml | grep "^version = " | awk  '{gsub(/"/, "", $3); print $3}')-$GITHUB_RUN_NUMBER"
+          bundle exec fpm -f \
+          -s dir \
+          -t deb \
+          --deb-priority optional \
+          --maintainer github@growse.com \
+          --vendor github@growse.com \
+          --license MIT \
+          -n $DEB_NAME \
+          --description "$APP_DESCRIPTION" \
+          --url $APP_URL \
+          --deb-changelog ../CHANGELOG.md \
+          --prefix / \
+          -a $DEB_ARCH \
+          -v $DEB_VERSION \
+          --config-files /etc/default/modem-keepaliver \
+          --before-install deb_scripts/before_install.sh \
+          --before-upgrade deb_scripts/before_upgrade.sh \
+          --after-remove deb_scripts/after_remove.sh \
+          --deb-systemd modem-keepaliver.service \
+          --deb-systemd-auto-start \
+          --deb-systemd-enable \
+          modem-keepaliver-defaults=/etc/default/modem-keepaliver \
+          polkit-rules.pkla=/etc/polkit-1/localauthority/50-local.d/modem-keepaliver.pkla \
+          ../target/x86_64-unknown-linux-musl/release/modem-keepaliver=/usr/bin/modem-keepaliver
+        env:
+          DEB_NAME: modem-keepaliver
+          APP_DESCRIPTION: A utility to keep a ModemManager modem connected
+          APP_URL: https://github.com/growse/modem-keepaliver
+          DEB_ARCH: amd64
+      - name: Upload to Apt repo
+        env:
+          APT_CREDENTIALS: ${{ secrets.APT_CREDENTIALS }}
+          APT_KEY_PASSPHRASE: ${{ secrets.APT_KEY_PASSPHRASE }}
+        run: |
+          echo $APT_CREDENTIALS > aptly-auth
+          find -type f -name "*.deb" -exec curl -f --netrc-file aptly-auth -XPOST -F file=@{} https://apttoo.growse.com/api/files/modem-keepaliver \;
+          export result=$(curl -f --netrc-file aptly-auth -X POST https://apttoo.growse.com/api/repos/defaultrepo/file/modem-keepaliver)
+          echo $result
+          export failed=$(echo $result | jq '.FailedFiles | length')
+          if [[ "$failed" != "0" ]]; then exit 1; fi
+          curl -f --netrc-file aptly-auth -X PUT -H"Content-type: application/json" --data '{"Signing":{"Passphrase":"'"$APT_KEY_PASSPHRASE"'","Batch":true}}' https://apttoo.growse.com/api/publish/:./stablish
