@@ -1,5 +1,6 @@
+---
 name: Build, package and upload
-on:
+"on":
   push:
     branches:
       - main
