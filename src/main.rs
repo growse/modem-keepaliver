@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
     )
     .map(|_| {})
     .map_err(|e| {
-        error!("Fatal error: {}", e);
+        error!("Fatal error: {e}");
         e
     })
 }
@@ -80,12 +80,12 @@ async fn get_dbus_signal_listener(bottleneck: Arc<Mutex<bool>>) -> Result<()> {
             state_change_event.0, state_change_event.1, state_change_event.2
         );
         match state_change_event {
-            (_, MMModemState::Registered, _) => {
-                info!("Ready to connect!");
+            (old, MMModemState::Registered, _) => {
+                info!("Modem changed from {old:?} to registered. Attempting connect.");
                 simple_connect(&connection, bottleneck.clone()).await?;
             }
-            (_, MMModemState::Connected, _) => info!("Connected!"),
-            state_change => debug!("Uninteresting state change: {:?}", state_change),
+            (_, MMModemState::Connected, _) => info!("Modem state changed to connected!"),
+            state_change => debug!("Uninteresting state change: {state_change:?}"),
         }
     }
     Ok(())

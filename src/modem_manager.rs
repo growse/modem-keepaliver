@@ -25,7 +25,7 @@ pub(crate) async fn check_modem_state_and_maybe_reconnect(
             simple_connect(&connection, arc).await?;
         }
         Some(other) => {
-            debug!("Modem is in state {:?}. Let's not bother it", other)
+            debug!("Modem is in state {other:?}. Let's not bother it")
         }
         _ => {
             warn!("Modem doesn't appear to be giving us a state. Erk.");
@@ -42,7 +42,7 @@ async fn check_modem_state(connection: &Connection) -> Result<Option<MMModemStat
     debug!("Fetching modem status");
     let status = proxy.get_status().await?;
     let modem_state = modem_properties_to_status(&status);
-    debug!("Modem state is: {:?}", modem_state);
+    debug!("Modem state is: {modem_state:?}");
     return Ok(modem_state);
 }
 
@@ -71,10 +71,7 @@ pub(crate) async fn simple_connect(
             ("allowed-auth", "pap"),
         ]);
 
-        debug!(
-            "Connecting to modem with parameters {:?}",
-            connect_parameters
-        );
+        debug!("Connecting to modem with parameters {connect_parameters:?}");
         let bearer_path: OwnedObjectPath = proxy
             .connect(
                 connect_parameters
