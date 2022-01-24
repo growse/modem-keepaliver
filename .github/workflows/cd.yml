@@ -19,8 +19,6 @@ jobs:
     name: Build and Test
     runs-on: ubuntu-latest
     steps:
-      - name: Install kcov
-        run: sudo apt-get update && sudo apt-get install cmake g++ pkg-config jq  libcurl4-openssl-dev libelf-dev libdw-dev binutils-dev libiberty-dev -y
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
@@ -28,17 +26,19 @@ jobs:
           target: x86_64-unknown-linux-musl
       - name: Rust Cache
         uses: Swatinem/rust-cache@v1
-      - name: Install kcov cargo
-        run: cargo install cargo-kcov
-      - name: Install kcov
-        run: cargo kcov --print-install-kcov-sh | sh
+      - name: Install cargo tarpaulin
+        run: cargo install cargo-tarpaulin
       - uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release
-      - name: Test
-        run: cargo kcov
-      - uses: codecov/codecov-action@v1
+      - uses: actions-rs/cargo@v1
+        with:
+          command: tarpaulin
+          args: --out Xml
+      - uses: codecov/codecov-action@v2
+        with:
+          fail_ci_if_error: true
         if: always()
       - name: Upload build artifact
         uses: actions/upload-artifact@v2
