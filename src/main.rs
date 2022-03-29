@@ -50,7 +50,7 @@ async fn main() -> Result<()> {
 
     let periodic_check_interval = Duration::from_secs(args.check_interval);
 
-    let bottleneck = Arc::new(Mutex::new(true));
+    let bottleneck = Arc::new(Mutex::new(()));
 
     try_join!(
         get_modem_status_checker_loop(periodic_check_interval, bottleneck.clone()),
@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
     })
 }
 
-async fn get_dbus_signal_listener(bottleneck: Arc<Mutex<bool>>) -> Result<()> {
+async fn get_dbus_signal_listener(bottleneck: Arc<Mutex<()>>) -> Result<()> {
     let connection = Connection::system().await?;
     let mut stream: StateChangedStream = get_state_change_stream(&connection).await?;
 
@@ -96,7 +96,7 @@ async fn get_dbus_signal_listener(bottleneck: Arc<Mutex<bool>>) -> Result<()> {
 
 async fn get_modem_status_checker_loop(
     interval: Duration,
-    bottleneck: Arc<Mutex<bool>>,
+    bottleneck: Arc<Mutex<()>>,
 ) -> Result<()> {
     let mut task_interval = tokio::time::interval(interval);
     info!("Checking modem status every {}s", interval.as_secs());
@@ -106,11 +106,8 @@ async fn get_modem_status_checker_loop(
     let err = loop {
         task_interval.tick().await;
         let result = check_modem_state_and_maybe_reconnect(&connection, bottleneck.clone()).await;
-        match result {
-            Err(e) => {
-                break e;
-            }
-            _ => {}
+        if let Err(e) = result {
+            break e;
         }
     };
     Err::<(), anyhow::Error>(err)

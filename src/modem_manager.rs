@@ -16,17 +16,17 @@ static MODEM_PATH: &str = "/org/freedesktop/ModemManager1/Modem/0";
 
 pub(crate) async fn check_modem_state_and_maybe_reconnect(
     connection: &Connection,
-    bottleneck: Arc<Mutex<bool>>,
+    bottleneck: Arc<Mutex<()>>,
 ) -> Result<()> {
     let modem_state = check_modem_state(connection).await?;
     match modem_state {
         Some(MMModemState::Registered) => {
             info!("Modem in state Registered. Let's try and reconnect");
-            simple_connect(&connection, bottleneck).await?;
+            simple_connect(connection, bottleneck).await?;
         }
         Some(MMModemState::Disabled) => {
             info!("Modem is in state Disabled. Let's try and enable it");
-            enable_modem(&connection, bottleneck).await?;
+            enable_modem(connection, bottleneck).await?;
         }
         Some(other) => {
             debug!("Modem is in state {other:?}. Let's not bother it")
@@ -39,7 +39,7 @@ pub(crate) async fn check_modem_state_and_maybe_reconnect(
 }
 
 async fn check_modem_state(connection: &Connection) -> Result<Option<MMModemState>> {
-    let proxy = SimpleProxy::builder(&connection)
+    let proxy = SimpleProxy::builder(connection)
         .path(MODEM_PATH)?
         .build()
         .await?;
@@ -47,7 +47,7 @@ async fn check_modem_state(connection: &Connection) -> Result<Option<MMModemStat
     let status = proxy.get_status().await?;
     let modem_state = modem_properties_to_status(&status);
     debug!("Modem state is: {modem_state:?}");
-    return Ok(modem_state);
+    Ok(modem_state)
 }
 
 fn modem_properties_to_status(status: &HashMap<String, OwnedValue>) -> Option<MMModemState> {
@@ -59,7 +59,7 @@ fn modem_properties_to_status(status: &HashMap<String, OwnedValue>) -> Option<MM
 
 pub(crate) async fn simple_connect(
     connection: &Connection,
-    bottleneck: Arc<Mutex<bool>>,
+    bottleneck: Arc<Mutex<()>>,
 ) -> Result<()> {
     let guard = bottleneck.try_lock();
     if guard.is_ok() {
@@ -107,7 +107,7 @@ pub(crate) async fn get_state_change_stream<'a>(
 
 pub(crate) async fn enable_modem(
     connection: &Connection,
-    bottleneck: Arc<Mutex<bool>>,
+    bottleneck: Arc<Mutex<()>>,
 ) -> Result<()> {
     let guard = bottleneck.try_lock();
     if guard.is_ok() {

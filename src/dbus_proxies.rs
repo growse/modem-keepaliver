@@ -73,10 +73,12 @@ impl StateChangedArgs<'_> {
         &self,
     ) -> Result<(MMModemState, MMModemState, MMModemStateChangeReason)> {
         Ok((
-            MMModemState::from_i32(self.old).ok_or(anyhow!("Invalid old state: {}", self.old))?,
-            MMModemState::from_i32(self.new).ok_or(anyhow!("Invalid new state: {}", self.new))?,
+            MMModemState::from_i32(self.old)
+                .ok_or_else(|| anyhow!("Invalid old state: {}", self.old))?,
+            MMModemState::from_i32(self.new)
+                .ok_or_else(|| anyhow!("Invalid new state: {}", self.new))?,
             MMModemStateChangeReason::from_u32(self.reason)
-                .ok_or(anyhow!("Invalid state change reason: {}", self.reason))?,
+                .ok_or_else(|| anyhow!("Invalid state change reason: {}", self.reason))?,
         ))
     }
 }
