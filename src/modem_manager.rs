@@ -10,19 +10,23 @@ use zbus::{zvariant, Connection};
 
 use zbus::zvariant::{OwnedObjectPath, OwnedValue};
 
-use crate::dbus_proxies::{MMModemState, ModemProxy, SimpleProxy, StateChangedStream};
+use crate::dbus_proxies::{MMModemState, ModemProxy, SignalProxy, SimpleProxy, StateChangedStream};
 
 static MODEM_PATH: &str = "/org/freedesktop/ModemManager1/Modem/0";
 
 pub(crate) async fn check_modem_state_and_maybe_reconnect(
     connection: &Connection,
-    arc: Arc<Mutex<bool>>,
+    bottleneck: Arc<Mutex<bool>>,
 ) -> Result<()> {
     let modem_state = check_modem_state(connection).await?;
     match modem_state {
         Some(MMModemState::Registered) => {
             info!("Modem in state Registered. Let's try and reconnect");
-            simple_connect(&connection, arc).await?;
+            simple_connect(&connection, bottleneck).await?;
+        }
+        Some(MMModemState::Disabled) => {
+            info!("Modem is in state Disabled. Let's try and enable it");
+            enable_modem(&connection, bottleneck).await?;
         }
         Some(other) => {
             debug!("Modem is in state {other:?}. Let's not bother it")
@@ -84,6 +88,7 @@ pub(crate) async fn simple_connect(
             "Successfully connected modem. Bearer is {}",
             bearer_path.as_str()
         );
+        enable_stats(connection).await?;
     } else {
         warn!("Unable to take guard: {:?}", guard.err().unwrap());
     }
@@ -98,4 +103,30 @@ pub(crate) async fn get_state_change_stream<'a>(
         .build()
         .await?;
     Ok(proxy.receive_state_changed().await?)
+}
+
+pub(crate) async fn enable_modem(
+    connection: &Connection,
+    bottleneck: Arc<Mutex<bool>>,
+) -> Result<()> {
+    let guard = bottleneck.try_lock();
+    if guard.is_ok() {
+        let proxy = ModemProxy::builder(connection)
+            .path(MODEM_PATH)?
+            .build()
+            .await?;
+        Ok(proxy.enable(true).await?)
+    } else {
+        warn!("Unable to take guard: {:?}", guard.err().unwrap());
+        Ok(())
+    }
+}
+
+async fn enable_stats(connection: &Connection) -> Result<()> {
+    info!("Enabling modem signal stats");
+    let proxy = SignalProxy::builder(connection)
+        .path(MODEM_PATH)?
+        .build()
+        .await?;
+    Ok(proxy.setup(5).await?)
 }

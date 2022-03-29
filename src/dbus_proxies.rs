@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
 use num_derive::FromPrimitive;
-
 use num_traits::FromPrimitive;
 use zbus::{dbus_proxy, zvariant};
+
 #[dbus_proxy(
     interface = "org.freedesktop.ModemManager1.Modem.Simple",
     default_service = "org.freedesktop.ModemManager1"
@@ -29,6 +29,18 @@ pub(crate) trait Modem {
     /// StateChanged signal
     #[dbus_proxy(signal)]
     fn state_changed(&self, old: i32, new: i32, reason: u32) -> zbus::Result<()>;
+
+    /// Enable method
+    fn enable(&self, enable: bool) -> zbus::Result<()>;
+}
+
+#[dbus_proxy(
+    interface = "org.freedesktop.ModemManager1.Modem.Signal",
+    default_service = "org.freedesktop.ModemManager1"
+)]
+trait Signal {
+    /// Setup method
+    fn setup(&self, rate: u32) -> zbus::Result<()>;
 }
 
 #[derive(FromPrimitive, Debug)]
@@ -61,10 +73,10 @@ impl StateChangedArgs<'_> {
         &self,
     ) -> Result<(MMModemState, MMModemState, MMModemStateChangeReason)> {
         Ok((
-            MMModemState::from_i32(self.old).ok_or(anyhow!("Invalid old state: {}",self.old))?,
-            MMModemState::from_i32(self.new).ok_or(anyhow!("Invalid new state: {}",self.new))?,
+            MMModemState::from_i32(self.old).ok_or(anyhow!("Invalid old state: {}", self.old))?,
+            MMModemState::from_i32(self.new).ok_or(anyhow!("Invalid new state: {}", self.new))?,
             MMModemStateChangeReason::from_u32(self.reason)
-                .ok_or(anyhow!("Invalid state change reason: {}",self.reason))?,
+                .ok_or(anyhow!("Invalid state change reason: {}", self.reason))?,
         ))
     }
 }

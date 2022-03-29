@@ -1,22 +1,21 @@
-mod dbus_proxies;
-mod modem_manager;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::Result;
 use clap::Parser;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use log::{debug, error, info, LevelFilter};
+use simplelog::{ColorChoice, Config, TerminalMode};
+use tokio::try_join;
 use zbus::export::ordered_stream::OrderedStreamExt;
+use zbus::Connection;
 
 use crate::dbus_proxies::{MMModemState, StateChangedStream};
 use crate::modem_manager::{
-    check_modem_state_and_maybe_reconnect, get_state_change_stream, simple_connect,
+    check_modem_state_and_maybe_reconnect, enable_modem, get_state_change_stream, simple_connect,
 };
-use log::{debug, error, info, LevelFilter};
 
-use simplelog::{ColorChoice, Config, TerminalMode};
-
-use tokio::try_join;
-use zbus::Connection;
+mod dbus_proxies;
+mod modem_manager;
 
 #[derive(Parser, Debug)]
 #[clap(about, version, author)]
@@ -83,6 +82,10 @@ async fn get_dbus_signal_listener(bottleneck: Arc<Mutex<bool>>) -> Result<()> {
             (old, MMModemState::Registered, _) => {
                 info!("Modem changed from {old:?} to registered. Attempting connect.");
                 simple_connect(&connection, bottleneck.clone()).await?;
+            }
+            (old, MMModemState::Disabled, reason) => {
+                info!("Modem changed from {old:?} to disabled because of {reason:?}. Attempting to re-enable.");
+                enable_modem(&connection, bottleneck.clone()).await?;
             }
             (_, MMModemState::Connected, _) => info!("Modem state changed to connected!"),
             state_change => debug!("Uninteresting state change: {state_change:?}"),
