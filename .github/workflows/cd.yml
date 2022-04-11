@@ -41,7 +41,7 @@ jobs:
           fail_ci_if_error: true
         if: always()
       - name: Upload build artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: target
           path: target/**/modem-keepaliver
@@ -97,7 +97,7 @@ jobs:
           APP_DESCRIPTION: A utility to keep a ModemManager modem connected
           APP_URL: https://github.com/growse/modem-keepaliver
       - name: Upload artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: debfiles
           path: "*.deb"
