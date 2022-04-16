@@ -40,4 +40,4 @@ DEPENDENCIES
   fpm (= 1.14.2)
 
 BUNDLED WITH
-   2.2.15
+   2.3.11
