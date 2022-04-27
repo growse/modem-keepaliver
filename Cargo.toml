@@ -10,7 +10,7 @@ log = "0.4.16"
 num-derive = "0.3.3"
 num-traits = "0.2.14"
 simplelog = "0.12.0"
-tokio = { version = "1.17.0", features = ["rt-multi-thread","time","macros"] }
+tokio = { version = "1.18.0", features = ["rt-multi-thread","time","macros"] }
 zbus = "2.1.1"
 
 [profile.release]
