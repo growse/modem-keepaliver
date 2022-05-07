@@ -1,5 +1,6 @@
 [Unit]
 Description=Daemon to keep a ModemManager modem connected
+Requires=ModemManager.service
 StartLimitBurst=3
 StartLimitIntervalSec=30s
 
@@ -9,6 +10,29 @@ User=modem-keepaliver
 EnvironmentFile=/etc/default/modem-keepaliver
 ExecStart=/usr/bin/modem-keepaliver $MODEM_KEEPALIVER_ARGS
 Restart=on-failure
+RestartSec=10
+PrivateNetwork=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+DeviceAllow=
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateMounts=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHome=yes
+ProtectProc=invisible
+PrivateUsers=yes
+ProtectKernelLogs=yes
+ProtectSystem=strict
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
 
 [Install]
 WantedBy=multi-user.target
