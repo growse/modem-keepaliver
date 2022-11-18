@@ -1,4 +1,12 @@
 ---
+env:
+  PACKAGE_NAME: modem-keepaliver
+  PACKAGE_DESCRIPTION: A utility to keep a ModemManager modem connected
+  PACKAGE_ARCH: amd64
+  RUST_TARGET: x86_64-unknown-linux-musl
+  CARGO_USE_CROSS: false
+  BINARY_NAME: modem-keepaliver
+
 name: Build, package and upload
 "on":
   push:
@@ -6,8 +14,8 @@ name: Build, package and upload
       - "*.md"
       - LICENSE
       - rustfmt.toml
-      - .github/dependabot.yml
-      - .gitigore
+      - .github/renovate.json
+      - .gitignore
     branches:
       - main
   pull_request:
@@ -15,26 +23,26 @@ name: Build, package and upload
       - main
 
 jobs:
-  build_and_test:
-    name: Build and Test
+  build:
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: x86_64-unknown-linux-musl
+          target: ${{ env.RUST_TARGET }}
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
       - name: Install cargo tarpaulin
         run: cargo install cargo-tarpaulin
       - uses: actions-rs/cargo@v1
-        name: Build release
         with:
           command: build
-          args: --release
+          use-cross: ${{ env.CARGO_USE_CROSS}}
+          args: --release --target=${{ env.RUST_TARGET }}
       - uses: actions-rs/cargo@v1
-        name: generate coverage
+        name: Generate coverage
         with:
           command: tarpaulin
           args: --out Xml
@@ -46,26 +54,25 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: target
-          path: target/**/modem-keepaliver
-  deploy:
-    name: Deploy
+          path: target/**/${{ env.BINARY_NAME }}
+  build-package:
+    name: Build Deb Package
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    needs: build_and_test
+    needs: build
     steps:
       - name: Check out code
         uses: actions/checkout@v3
-      - name: Set up Ruby 3.0
+      - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          bundler-cache: true
           working-directory: ./packaging
+          bundler-cache: true
       - name: Download build artifact
         uses: actions/download-artifact@v3
       - name: Set binary as executable
         run: |
-          find target -name modem-keepaliver -exec chmod +x {} \;
-      - name: Make deb package
+          find target -name ${{ env.BINARY_NAME }} -exec chmod +x {} \;
+      - name: Package
         working-directory: ./packaging
         run: |
           export DEB_VERSION="$(cat ../Cargo.toml | grep "^version = " | awk  '{gsub(/"/, "", $3); print $3}')-$(printf "%04d" $GITHUB_RUN_NUMBER)"
@@ -81,7 +88,7 @@ jobs:
           --url $APP_URL \
           --deb-changelog ../CHANGELOG.md \
           --prefix / \
-          -a amd64 \
+          -a $DEB_ARCH \          
           -v $DEB_VERSION \
           --config-files /etc/default/modem-keepaliver \
           --before-install deb_scripts/before_install.sh \
@@ -94,14 +101,25 @@ jobs:
           polkit-rules.pkla=/etc/polkit-1/localauthority/50-local.d/modem-keepaliver.pkla \
           ../target/x86_64-unknown-linux-musl/release/modem-keepaliver=/usr/bin/modem-keepaliver
         env:
-          DEB_NAME: modem-keepaliver
-          APP_DESCRIPTION: A utility to keep a ModemManager modem connected
-          APP_URL: https://github.com/growse/modem-keepaliver
-      - name: Upload artifacts
+          DEB_NAME: ${{ env.PACKAGE_NAME }}
+          APP_DESCRIPTION: ${{ env.PACKAGE_DESCRIPTION }}
+          APP_URL: https://github.com/${{ github.repository }}
+          DEB_ARCH: ${{ env.PACKAGE_ARCH }}
+      - name: Upload build artifact
         uses: actions/upload-artifact@v3
         with:
-          name: debfiles
-          path: "*.deb"
+          name: deb-package
+          path: "packaging/*.deb"
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    needs: build-package
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: deb-package
       - name: Upload to Apt repo
         env:
           APT_CREDENTIALS: ${{ secrets.APT_CREDENTIALS }}
