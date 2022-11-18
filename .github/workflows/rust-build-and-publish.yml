@@ -110,8 +110,8 @@ jobs:
         with:
           name: deb-package
           path: "packaging/*.deb"
-  deploy:
-    name: Deploy
+  publish:
+    name: Publish
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
     needs: build-package
