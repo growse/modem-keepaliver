@@ -2,12 +2,12 @@
 queue_rules:
   - name: default
     conditions:
-      - "check-success=Build and Test"
+      - "check-success=Build Deb Package"
 
 pull_request_rules:
   - name: Automatic merge on approval
     conditions:
-      - "check-success=Build and Test"
+      - "check-success=Build Deb Package"
     actions:
       queue:
         method: rebase
