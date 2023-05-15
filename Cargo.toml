@@ -11,7 +11,7 @@ num-derive = "0.3.3"
 num-traits = "0.2.15"
 simplelog = "0.12.1"
 tokio = { version = "1.28.1", features = ["rt-multi-thread","time","macros"] }
-zbus = "3.13.0"
+zbus = "3.13.1"
 
 [profile.release]
 opt-level="s"
