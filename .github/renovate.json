@@ -1,11 +1,21 @@
 {
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:base",
     ":disableRateLimiting",
     ":rebaseStalePrs",
     ":disableDependencyDashboard"
   ],
-  "assignees": [
-    "growse"
+  "assignees": ["growse"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchCurrentVersion": "!/^0/",
+      "automerge": true
+    }
   ]
 }
