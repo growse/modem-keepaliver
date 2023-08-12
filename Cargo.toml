@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.72"
 clap = { version = "4.3.21", features = ["derive"] }
-log = "0.4.19"
+log = "0.4.20"
 num-derive = "0.4.0"
 num-traits = "0.2.16"
 simplelog = "0.12.1"
