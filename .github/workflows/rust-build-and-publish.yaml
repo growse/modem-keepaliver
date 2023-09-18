@@ -45,7 +45,7 @@ jobs:
         name: Generate coverage
         with:
           command: tarpaulin
-          args: --out Xml
+          args: --out xml
       - uses: codecov/codecov-action@v3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
