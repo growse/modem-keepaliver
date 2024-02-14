@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Result};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
-use zbus::{dbus_proxy, zvariant};
+use zbus::{proxy, zvariant};
 
-#[dbus_proxy(
+#[proxy(
     interface = "org.freedesktop.ModemManager1.Modem.Simple",
     default_service = "org.freedesktop.ModemManager1"
 )]
@@ -21,20 +21,20 @@ pub(crate) trait Simple {
     fn get_status(&self) -> zbus::Result<std::collections::HashMap<String, zvariant::OwnedValue>>;
 }
 
-#[dbus_proxy(
+#[proxy(
     interface = "org.freedesktop.ModemManager1.Modem",
     default_service = "org.freedesktop.ModemManager1"
 )]
 pub(crate) trait Modem {
     /// StateChanged signal
-    #[dbus_proxy(signal)]
+    #[zbus(signal)]
     fn state_changed(&self, old: i32, new: i32, reason: u32) -> zbus::Result<()>;
 
     /// Enable method
     fn enable(&self, enable: bool) -> zbus::Result<()>;
 }
 
-#[dbus_proxy(
+#[proxy(
     interface = "org.freedesktop.ModemManager1.Modem.Signal",
     default_service = "org.freedesktop.ModemManager1"
 )]
