@@ -52,7 +52,8 @@ async fn check_modem_state(connection: &Connection) -> Result<Option<MMModemStat
 
 fn modem_properties_to_status(status: &HashMap<String, OwnedValue>) -> Option<MMModemState> {
     status
-        .get("state").map(|a| a.downcast_ref::<u32>().expect("State was not a u32"))
+        .get("state")
+        .map(|a| a.downcast_ref::<u32>().expect("State was not a u32"))
         .and_then(MMModemState::from_u32)
 }
 
