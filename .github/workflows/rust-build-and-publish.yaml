@@ -69,7 +69,7 @@ jobs:
           working-directory: ./packaging
           bundler-cache: true
       - name: Download build artifact
-        uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e # v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
       - name: Set binary as executable
         run: |
           find target -name ${{ env.BINARY_NAME }} -exec chmod +x {} \;
@@ -118,7 +118,7 @@ jobs:
     needs: build-package
     steps:
       - name: Download build artifact
-        uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e # v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
         with:
           name: deb-package
       - name: Upload to Apt repo
