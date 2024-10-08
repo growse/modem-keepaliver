@@ -52,7 +52,7 @@ jobs:
           fail_ci_if_error: true
         if: always()
       - name: Upload build artifact
-        uses: actions/upload-artifact@604373da6381bf24206979c74d06a550515601b9 # v4
+        uses: actions/upload-artifact@84480863f228bb9747b473957fcc9e309aa96097 # v4
         with:
           name: target
           path: target/**/${{ env.BINARY_NAME }}
@@ -107,7 +107,7 @@ jobs:
           APP_URL: https://github.com/${{ github.repository }}
           DEB_ARCH: ${{ env.PACKAGE_ARCH }}
       - name: Upload build artifact
-        uses: actions/upload-artifact@604373da6381bf24206979c74d06a550515601b9 # v4
+        uses: actions/upload-artifact@84480863f228bb9747b473957fcc9e309aa96097 # v4
         with:
           name: deb-package
           path: "packaging/*.deb"
