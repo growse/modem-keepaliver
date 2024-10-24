@@ -97,7 +97,7 @@ pub(crate) async fn simple_connect(
 
 pub(crate) async fn get_state_change_stream<'a>(
     connection: &Connection,
-) -> Result<StateChangedStream<'a>> {
+) -> Result<StateChangedStream> {
     let proxy = ModemProxy::builder(connection)
         .path(MODEM_PATH)?
         .build()

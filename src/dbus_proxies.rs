@@ -22,7 +22,7 @@ pub(crate) trait Simple {
 }
 
 #[proxy(
-    interface = "org.freedesktop.ModemManager1.Modem",
+    interface = "org.freedesktop.ModemManager1.Modefm",
     default_service = "org.freedesktop.ModemManager1"
 )]
 pub(crate) trait Modem {
@@ -38,7 +38,7 @@ pub(crate) trait Modem {
     interface = "org.freedesktop.ModemManager1.Modem.Signal",
     default_service = "org.freedesktop.ModemManager1"
 )]
-trait Signal {
+pub(crate) trait Signal {
     /// Setup method
     fn setup(&self, rate: u32) -> zbus::Result<()>;
 }
