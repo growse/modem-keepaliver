@@ -33,7 +33,7 @@ jobs:
           toolchain: stable
           target: ${{ env.RUST_TARGET }}
       - name: Rust Cache
-        uses: Swatinem/rust-cache@720f7e45ccee46c12a7b1d7bed2ab733be9be5a1 # v2
+        uses: Swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2
       - name: Install cargo tarpaulin
         run: cargo install cargo-tarpaulin
       - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
